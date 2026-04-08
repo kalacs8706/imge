@@ -2,20 +2,21 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>.IMGE Ultimate Tool</title>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; max-width: 850px; margin: 2rem auto; background: #f0f4f8; padding: 20px; color: #1e293b; }
+        body { font-family: 'Segoe UI', sans-serif; max-width: 800px; margin: 2rem auto; background: #f0f4f8; padding: 20px; color: #1e293b; }
         .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 25px; }
-        h3 { margin-top: 0; color: #334155; }
         .input-group { margin: 20px 0; padding: 15px; background: #f8fafc; border-radius: 8px; border: 2px dashed #cbd5e1; }
         .progress-container { width: 100%; background: #e2e8f0; height: 10px; border-radius: 10px; margin: 15px 0; overflow: hidden; display: none; }
         .progress-bar { width: 0%; height: 100%; background: #3b82f6; transition: width 0.1s; }
-        button { background: #10b981; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; margin-top: 10px; display: none; }
-        button:hover { background: #059669; }
-        canvas { border: 1px solid #334155; margin-top: 15px; max-width: 100%; image-rendering: pixelated; background: #fff; display: block; }
-        .status-text { font-size: 0.85rem; font-weight: bold; color: #64748b; }
-        textarea { width: 100%; height: 100px; font-family: monospace; margin-top: 10px; display: none; font-size: 10px; }
+        
+        button { border: none; padding: 12px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; margin-right: 10px; transition: 0.2s; }
+        #convertBtn { background: #3b82f6; color: white; }
+        #downloadImgeBtn { background: #10b981; color: white; display: none; }
+        #savePngBtn { background: #10b981; color: white; display: none; }
+        
+        canvas { border: 1px solid #334155; margin-top: 15px; max-width: 100%; background: #fff; display: block; }
+        .status-text { font-size: 0.85rem; font-weight: bold; color: #64748b; margin-top: 10px; }
     </style>
 </head>
 <body>
@@ -25,8 +26,11 @@
     <div class="input-group">
         <input type="file" id="imageInput" accept="image/*">
     </div>
+    <button id="convertBtn">Convert to .IMGE</button>
+    <button id="downloadImgeBtn">⬇️ Download .imge File</button>
+    
     <div id="encodeProgressCont" class="progress-container"><div id="encodeBar" class="progress-bar"></div></div>
-    <div id="encodeStatus" class="status-text">Ready to encode...</div>
+    <div id="encodeStatus" class="status-text">Select a photo to begin.</div>
 </div>
 
 <div class="card">
@@ -34,131 +38,134 @@
     <div class="input-group">
         <input type="file" id="imgeFileInput" accept=".imge">
     </div>
+    <button id="savePngBtn">💾 Save as PNG</button>
     <div id="decodeProgressCont" class="progress-container"><div id="decodeBar" class="progress-bar"></div></div>
-    <div id="decodeStatus" class="status-text">Ready to decode...</div>
-    
-    <button id="savePngBtn">💾 Save as PNG Image</button>
+    <div id="decodeStatus" class="status-text">Ready to decode.</div>
     <canvas id="mainCanvas"></canvas>
 </div>
 
 <script>
+    let finalOutput = "";
+    let fileName = "output";
     const canvas = document.getElementById('mainCanvas');
     const ctx = canvas.getContext('2d');
-    const saveBtn = document.getElementById('savePngBtn');
 
     // --- ENCODER ---
-    document.getElementById('imageInput').addEventListener('change', function(e) {
-        if (!this.files[0]) return;
-        const file = this.files[0];
+    document.getElementById('convertBtn').onclick = function() {
+        const fileInput = document.getElementById('imageInput');
+        if (!fileInput.files[0]) return alert("Select an image first!");
+        
+        const file = fileInput.files[0];
+        fileName = file.name.split('.')[0];
         const reader = new FileReader();
-        const bitRes = 24; 
 
-        reader.onload = (event) => {
+        reader.onload = (e) => {
             const img = new Image();
             img.onload = () => {
-                const tempCanvas = document.createElement('canvas');
-                const tCtx = tempCanvas.getContext('2d');
-                tempCanvas.width = img.width; tempCanvas.height = img.height;
-                tCtx.drawImage(img, 0, 0);
-                const pix = tCtx.getImageData(0, 0, img.width, img.height).data;
+                // Safety: Resize if image is massive (prevents black pixel error)
+                let w = img.width, h = img.height;
+                if(w > 3000) { h = Math.floor(h * (3000/w)); w = 3000; }
 
-                let output = `lineLength=${img.width}\n`;
+                const tCanvas = document.createElement('canvas');
+                const tCtx = tCanvas.getContext('2d');
+                tCanvas.width = w; tCanvas.height = h;
+                tCtx.drawImage(img, 0, 0, w, h);
+                const pix = tCtx.getImageData(0, 0, w, h).data;
+
+                let output = `lineLength=${w}\n`;
                 document.getElementById('encodeProgressCont').style.display = 'block';
+                document.getElementById('downloadImgeBtn').style.display = 'none';
                 let y = 0;
 
-                function processRows() {
-                    const chunkEnd = Math.min(y + 30, img.height);
-                    for (; y < chunkEnd; y++) {
+                function step() {
+                    const chunk = Math.min(y + 40, h);
+                    for (; y < chunk; y++) {
                         let colors = {};
-                        for (let x = 0; x < img.width; x++) {
-                            let i = (y * img.width + x) * 4;
-                            let r = Math.round(pix[i]/bitRes)*bitRes, g = Math.round(pix[i+1]/bitRes)*bitRes, b = Math.round(pix[i+2]/bitRes)*bitRes;
+                        for (let x = 0; x < w; x++) {
+                            let i = (y * w + x) * 4;
+                            // Compression (Bit Reduction 24)
+                            let r = Math.round(pix[i]/24)*24, g = Math.round(pix[i+1]/24)*24, b = Math.round(pix[i+2]/24)*24;
                             let hex = ((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1).toUpperCase();
                             if (!colors[hex]) colors[hex] = [];
                             colors[hex].push(x + 1);
                         }
-                        let row = Object.entries(colors).map(([hex, idxs]) => {
-                            let ranges = [], start = idxs[0], prev = idxs[0];
+                        output += Object.entries(colors).map(([hex, idxs]) => {
+                            let ranges = [], s = idxs[0], p = idxs[0];
                             for (let k = 1; k <= idxs.length; k++) {
-                                if (k < idxs.length && idxs[k] === prev + 1) prev = idxs[k];
-                                else {
-                                    ranges.push(start === prev ? start : `${start}-${prev}`);
-                                    if (k < idxs.length) { start = prev = idxs[k]; }
-                                }
+                                if (k < idxs.length && idxs[k] === p + 1) p = idxs[k];
+                                else { ranges.push(s === p ? s : `${s}-${p}`); if (k < idxs.length) s = p = idxs[k]; }
                             }
                             return `${ranges.join('.')}=${hex}`;
                         }).join(',') + ',\n';
-                        output += row;
                     }
-                    let p = Math.floor((y/img.height)*100);
-                    document.getElementById('encodeBar').style.width = p+"%";
-                    if (y < img.height) requestAnimationFrame(processRows);
+                    document.getElementById('encodeBar').style.width = Math.floor((y/h)*100) + "%";
+                    if (y < h) requestAnimationFrame(step);
                     else {
-                        const blob = new Blob([output], {type:'text/plain'});
-                        const a = document.createElement('a');
-                        a.href = URL.createObjectURL(blob);
-                        a.download = file.name.split('.')[0] + ".imge";
-                        a.click();
-                        document.getElementById('encodeStatus').innerText = "✓ Downloaded .imge";
+                        finalOutput = output;
+                        document.getElementById('encodeStatus').innerText = "✓ Conversion Done!";
+                        document.getElementById('downloadImgeBtn').style.display = 'inline-block';
                     }
                 }
-                processRows();
+                step();
             };
-            img.src = event.target.result;
+            img.src = e.target.result;
         };
         reader.readAsDataURL(file);
-    });
+    };
 
-    // --- DECODER + SAVE PNG ---
-    document.getElementById('imgeFileInput').addEventListener('change', function(e) {
+    document.getElementById('downloadImgeBtn').onclick = () => {
+        const blob = new Blob([finalOutput], {type: 'text/plain'});
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = fileName + ".imge";
+        a.click();
+    };
+
+    // --- DECODER ---
+    document.getElementById('imgeFileInput').onchange = function() {
         if (!this.files[0]) return;
-        saveBtn.style.display = 'none'; // Hide button if starting new decode
         const reader = new FileReader();
-        reader.onload = (event) => {
-            const lines = event.target.result.trim().split('\n');
-            const width = parseInt(lines[0].split('=')[1]);
-            canvas.width = width; canvas.height = lines.length - 1;
+        reader.onload = (e) => {
+            const lines = e.target.result.trim().split('\n');
+            const w = parseInt(lines[0].split('=')[1]);
+            canvas.width = w; canvas.height = lines.length - 1;
             document.getElementById('decodeProgressCont').style.display = 'block';
 
             let lineIdx = 1;
-            function decodeRows() {
-                const chunkEnd = Math.min(lineIdx + 60, lines.length);
-                for (; lineIdx < chunkEnd; lineIdx++) {
-                    const rowStr = lines[lineIdx]; if (!rowStr) continue;
-                    rowStr.split(',').filter(s => s.trim()).forEach(seg => {
-                        const [idxPart, hex] = seg.split('='); if(!hex) return;
-                        const color = "#" + hex.trim();
-                        idxPart.trim().split('.').forEach(range => {
+            function draw() {
+                const chunk = Math.min(lineIdx + 100, lines.length);
+                for (; lineIdx < chunk; lineIdx++) {
+                    const row = lines[lineIdx]; if (!row) continue;
+                    row.split(',').filter(s => s.trim()).forEach(seg => {
+                        const [idxP, hex] = seg.split('='); if(!hex) return;
+                        idxP.trim().split('.').forEach(range => {
+                            ctx.fillStyle = "#" + hex.trim();
                             if (range.includes('-')) {
                                 const [s, end] = range.split('-').map(Number);
-                                ctx.fillStyle = color;
                                 ctx.fillRect(s - 1, lineIdx - 1, (end - s) + 1, 1);
                             } else {
-                                ctx.fillStyle = color;
                                 ctx.fillRect(parseInt(range) - 1, lineIdx - 1, 1, 1);
                             }
                         });
                     });
                 }
-                let p = Math.floor((lineIdx/lines.length)*100);
-                document.getElementById('decodeBar').style.width = p+"%";
-                if (lineIdx < lines.length) requestAnimationFrame(decodeRows);
+                document.getElementById('decodeBar').style.width = Math.floor((lineIdx/lines.length)*100) + "%";
+                if (lineIdx < lines.length) requestAnimationFrame(draw);
                 else {
-                    document.getElementById('decodeStatus').innerText = "✓ Decode Complete!";
-                    saveBtn.style.display = 'inline-block'; // Show Save Button
+                    document.getElementById('decodeStatus').innerText = "✓ Rendered!";
+                    document.getElementById('savePngBtn').style.display = 'inline-block';
                 }
             }
-            decodeRows();
+            draw();
         };
         reader.readAsText(this.files[0]);
-    });
+    };
 
-    // --- SAVE AS PNG LOGIC ---
-    saveBtn.onclick = function() {
-        const link = document.createElement('a');
-        link.download = 'decoded_image.png';
-        link.href = canvas.toDataURL("image/png");
-        link.click();
+    document.getElementById('savePngBtn').onclick = () => {
+        const a = document.createElement('a');
+        a.download = 'decoded_image.png';
+        a.href = canvas.toDataURL("image/png");
+        a.click();
     };
 </script>
 </body>
