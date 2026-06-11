@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>.IMGE Ultimate Tool</title>
+    <title>.IMGE Converter</title>
     <style>
         body { font-family: 'Segoe UI', sans-serif; max-width: 800px; margin: 2rem auto; background: #f0f4f8; padding: 20px; color: #1e293b; }
         .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 25px; }
@@ -83,8 +83,10 @@
                         let colors = {};
                         for (let x = 0; x < w; x++) {
                             let i = (y * w + x) * 4;
-                            // Compression (Bit Reduction 24)
-                            let r = Math.round(pix[i]/24)*24, g = Math.round(pix[i+1]/24)*24, b = Math.round(pix[i+2]/24)*24;
+                            
+                            // Compression removed: Extract exact color channels
+                            let r = pix[i], g = pix[i+1], b = pix[i+2];
+                            
                             let hex = ((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1).toUpperCase();
                             if (!colors[hex]) colors[hex] = [];
                             colors[hex].push(x + 1);
